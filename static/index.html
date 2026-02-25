@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MedExtract — Medical Report Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #f4f1ec;
+      --surface:     #faf8f5;
+      --ink:         #1a1714;
+      --ink-mid:     #5a534e;
+      --ink-light:   #9e9490;
+      --accent:      #c0392b;
+      --accent-dim:  #e8d5d3;
+      --success:     #2d6a4f;
+      --success-dim: #d8ede4;
+      --warn:        #b5621b;
+      --warn-dim:    #f5e4d3;
+      --rule:        #ddd8d0;
+      --mono:        'DM Mono', monospace;
+      --serif:       'DM Serif Display', serif;
+      --sans:        'DM Sans', sans-serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--sans);
+      background-color: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 2rem 3rem 1.5rem;
+      display: flex;
+      align-items: baseline;
+      gap: 1.5rem;
+      border-bottom: 1px solid var(--rule);
+      background: var(--surface);
+    }
+    .logo {
+      font-family: var(--serif);
+      font-size: 1.75rem;
+      color: var(--ink);
+      letter-spacing: -0.02em;
+    }
+    .logo span { color: var(--accent); }
+    .tagline {
+      font-size: 0.75rem;
+      font-weight: 400;
+      color: var(--ink-light);
+      font-family: var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* ── Main layout ── */
+    main {
+      flex: 1;
+      max-width: 880px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 3rem 2rem 4rem;
+    }
+
+    /* ── Section labels ── */
+    .section-label {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-light);
+      margin-bottom: 0.75rem;
+    }
+
+    /* ── Drop zone ── */
+    #drop-zone {
+      border: 1.5px dashed var(--rule);
+      border-radius: 4px;
+      background: var(--surface);
+      padding: 3.5rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+    #drop-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    #drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-icon {
+      width: 48px; height: 48px;
+      margin: 0 auto 1.25rem;
+      display: block;
+    }
+    .drop-title {
+      font-family: var(--serif);
+      font-size: 1.3rem;
+      color: var(--ink);
+      margin-bottom: 0.4rem;
+    }
+    .drop-sub {
+      font-size: 0.8rem;
+      color: var(--ink-light);
+      font-family: var(--mono);
+    }
+
+    /* ── File queue ── */
+    #file-queue {
+      margin-top: 2rem;
+      display: none;
+    }
+    #file-queue.visible { display: block; }
+    #file-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .file-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+      padding: 0.75rem 1rem;
+      transition: border-color 0.2s;
+    }
+    .file-item.done   { border-left: 3px solid var(--success); }
+    .file-item.failed { border-left: 3px solid var(--accent); }
+    .file-item.processing { border-left: 3px solid var(--warn); }
+    .file-name {
+      font-size: 0.85rem;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-patient {
+      font-size: 0.72rem;
+      color: var(--ink-mid);
+      font-family: var(--mono);
+      margin-top: 0.15rem;
+    }
+    .file-badge {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.25rem 0.6rem;
+      border-radius: 2px;
+      white-space: nowrap;
+    }
+    .badge-pending    { background: var(--rule); color: var(--ink-mid); }
+    .badge-processing { background: var(--warn-dim); color: var(--warn); }
+    .badge-done       { background: var(--success-dim); color: var(--success); }
+    .badge-failed     { background: var(--accent-dim); color: var(--accent); }
+
+    /* ── Progress bar ── */
+    .progress-wrap {
+      height: 2px;
+      background: var(--rule);
+      border-radius: 1px;
+      overflow: hidden;
+      margin-bottom: 1.25rem;
+    }
+    .progress-bar {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.7rem 1.5rem;
+      border-radius: 3px;
+      border: 1.5px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-primary {
+      background: var(--ink);
+      color: var(--bg);
+      border-color: var(--ink);
+    }
+    .btn-primary:hover { background: var(--accent); border-color: var(--accent); }
+    .btn-primary:disabled {
+      background: var(--rule);
+      color: var(--ink-light);
+      border-color: var(--rule);
+      cursor: not-allowed;
+    }
+    .btn-outline {
+      background: transparent;
+      color: var(--ink);
+      border-color: var(--rule);
+    }
+    .btn-outline:hover { border-color: var(--ink); }
+    .btn-download {
+      background: var(--success);
+      color: #fff;
+      border-color: var(--success);
+      font-size: 0.8rem;
+      padding: 0.8rem 2rem;
+    }
+    .btn-download:hover { background: #1a4f3a; border-color: #1a4f3a; }
+
+    /* ── Action row ── */
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    /* ── Status banner ── */
+    #status-banner {
+      display: none;
+      margin-top: 2rem;
+      padding: 1rem 1.25rem;
+      border-radius: 3px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+    }
+    #status-banner.info    { background: #e8f0fe; color: #1a56db; }
+    #status-banner.success { background: var(--success-dim); color: var(--success); }
+    #status-banner.error   { background: var(--accent-dim); color: var(--accent); }
+    #status-banner.visible { display: flex; align-items: center; gap: 0.75rem; }
+
+    /* ── Stats row ── */
+    #stats-row {
+      display: none;
+      gap: 1.5rem;
+      margin-top: 2rem;
+    }
+    #stats-row.visible { display: flex; flex-wrap: wrap; }
+    .stat-box {
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+      padding: 1rem 1.25rem;
+      min-width: 110px;
+    }
+    .stat-num {
+      font-family: var(--serif);
+      font-size: 2rem;
+      line-height: 1;
+      margin-bottom: 0.2rem;
+    }
+    .stat-label {
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--ink-light);
+    }
+
+    /* ── Spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid var(--warn-dim);
+      border-top-color: var(--warn);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    /* ── Pulse dot ── */
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .pulse-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 1.4s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+
+    /* ── Divider ── */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--rule);
+      margin: 2.5rem 0;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--rule);
+      padding: 1.25rem 3rem;
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--ink-light);
+      letter-spacing: 0.06em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* ── Fade-in animation ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-up { animation: fadeUp 0.35s ease both; }
+
+    /* ── Login overlay ── */
+    #login-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(26, 23, 20, 0.95);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.3s ease;
+    }
+    #login-overlay.hidden {
+      display: none;
+    }
+    .login-box {
+      background: var(--surface);
+      padding: 3rem 3.5rem;
+      border-radius: 4px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      max-width: 420px;
+      width: 90%;
+    }
+    .login-title {
+      font-family: var(--serif);
+      font-size: 1.75rem;
+      color: var(--ink);
+      margin-bottom: 0.5rem;
+    }
+    .login-subtitle {
+      font-size: 0.85rem;
+      color: var(--ink-mid);
+      margin-bottom: 2.5rem;
+      line-height: 1.6;
+    }
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+    .form-label {
+      display: block;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-mid);
+      margin-bottom: 0.5rem;
+    }
+    .form-input {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: 1.5px solid var(--rule);
+      border-radius: 3px;
+      font-family: var(--sans);
+      font-size: 0.95rem;
+      color: var(--ink);
+      background: #fff;
+      transition: border-color 0.2s;
+    }
+    .form-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .login-error {
+      display: none;
+      padding: 0.75rem 1rem;
+      background: #fee;
+      border-left: 3px solid var(--accent);
+      color: var(--accent);
+      font-size: 0.85rem;
+      margin-bottom: 1.5rem;
+      border-radius: 2px;
+    }
+    .login-error.show {
+      display: block;
+    }
+    .btn-login {
+      width: 100%;
+      padding: 1rem;
+      font-size: 0.85rem;
+    }
+    #logout-btn {
+      margin-left: auto;
+      background: transparent;
+      border: 1px solid var(--rule);
+      color: var(--ink-mid);
+      padding: 0.4rem 0.9rem;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #logout-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Login overlay -->
+<div id="login-overlay">
+  <div class="login-box">
+    <h1 class="login-title">Login</h1>
+    <p class="login-subtitle">Enter your credentials to access the Medical Report Extraction Platform</p>
+    
+    <div class="login-error" id="login-error"></div>
+    
+    <form id="login-form">
+      <div class="form-group">
+        <label class="form-label" for="username">Username</label>
+        <input 
+          type="text" 
+          id="username" 
+          name="username" 
+          class="form-input" 
+          required 
+          autocomplete="username"
+          placeholder="Enter username"
+        />
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <input 
+          type="password" 
+          id="password" 
+          name="password" 
+          class="form-input" 
+          required 
+          autocomplete="current-password"
+          placeholder="Enter password"
+        />
+      </div>
+      
+      <button type="submit" class="btn btn-primary btn-login">
+        <span id="login-btn-label">Login</span>
+      </button>
+    </form>
+  </div>
+</div>
+
+<header>
+  <div class="logo">Med<span>Extract</span></div>
+  <div class="tagline">Medical Report Intelligence Platform</div>
+  <button id="logout-btn" style="display:none">Logout</button>
+</header>
+
+<main>
+
+  <!-- Upload section -->
+  <div class="section-label">Upload Reports</div>
+  <div id="drop-zone" role="button" aria-label="Upload PDF files">
+    <input type="file" id="file-input" accept=".pdf" multiple />
+    <svg class="drop-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="8" y="14" width="32" height="26" rx="2" stroke="#9e9490" stroke-width="1.5" fill="none"/>
+      <path d="M18 14V11a6 6 0 0112 0v3" stroke="#9e9490" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <path d="M24 22v10M20 26l4-4 4 4" stroke="#c0392b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="drop-title">Drop PDF reports here</div>
+    <div class="drop-sub">or click to browse — multiple files supported</div>
+  </div>
+
+  <!-- File queue -->
+  <div id="file-queue">
+    <hr class="divider" />
+    <div class="section-label">Files Queued — <span id="queue-count">0</span></div>
+
+    <div class="progress-wrap" id="progress-wrap" style="display:none">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+
+    <ul id="file-list"></ul>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-process" disabled>
+        <span id="btn-label">Process Reports</span>
+      </button>
+      <button class="btn btn-outline" id="btn-clear">Clear All</button>
+      <button class="btn btn-download" id="btn-download" style="display:none">
+        ↓ Download Excel
+      </button>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  <div id="stats-row">
+    <div class="stat-box">
+      <div class="stat-num" id="stat-total">0</div>
+      <div class="stat-label">Total</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num" id="stat-done" style="color:var(--success)">0</div>
+      <div class="stat-label">Extracted</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num" id="stat-failed" style="color:var(--accent)">0</div>
+      <div class="stat-label">Failed</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num" id="stat-progress" style="color:var(--warn)">0</div>
+      <div class="stat-label">In Progress</div>
+    </div>
+  </div>
+
+  <!-- Status banner -->
+  <div id="status-banner"></div>
+
+</main>
+
+<footer>
+  <span>MedExtract v1.0</span>
+  <span id="footer-env"></span>
+</footer>
+
+<script>
+  // ── API Configuration ──────────────────────────────────────────────────────
+  // Session token stored in sessionStorage after login
+  
+  const API_BASE = window.location.origin;
+
+  // ── Session Management ─────────────────────────────────────────────────────
+  function getSessionToken() {
+    return sessionStorage.getItem('auth_token');
+  }
+
+  function setSessionToken(token) {
+    sessionStorage.setItem('auth_token', token);
+  }
+
+  function clearSessionToken() {
+    sessionStorage.removeItem('auth_token');
+  }
+
+  function isLoggedIn() {
+    return !!getSessionToken();
+  }
+
+  function getAuthHeaders() {
+    const token = getSessionToken();
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  }
+
+  function showApp() {
+    document.getElementById('login-overlay').classList.add('hidden');
+    document.getElementById('logout-btn').style.display = 'block';
+  }
+
+  function showLogin() {
+    document.getElementById('login-overlay').classList.remove('hidden');
+    document.getElementById('logout-btn').style.display = 'none';
+    clearSessionToken();
+  }
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let selectedFiles = [];
+  let currentJobId  = null;
+  let pollInterval  = null;
+  let isProcessing  = false;
+
+  // ── DOM refs ───────────────────────────────────────────────────────────────
+  const dropZone    = document.getElementById('drop-zone');
+  const fileInput   = document.getElementById('file-input');
+  const fileQueue   = document.getElementById('file-queue');
+  const fileList    = document.getElementById('file-list');
+  const queueCount  = document.getElementById('queue-count');
+  const btnProcess  = document.getElementById('btn-process');
+  const btnLabel    = document.getElementById('btn-label');
+  const btnClear    = document.getElementById('btn-clear');
+  const btnDownload = document.getElementById('btn-download');
+  const progressBar = document.getElementById('progress-bar');
+  const progressWrap= document.getElementById('progress-wrap');
+  const statusBanner= document.getElementById('status-banner');
+  const statsRow    = document.getElementById('stats-row');
+  const statTotal   = document.getElementById('stat-total');
+  const statDone    = document.getElementById('stat-done');
+  const statFailed  = document.getElementById('stat-failed');
+  const statProg    = document.getElementById('stat-progress');
+
+  // ── Drag & Drop ────────────────────────────────────────────────────────────
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const pdfs = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf' || f.name.endsWith('.pdf'));
+    if (pdfs.length) addFiles(pdfs);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) addFiles(Array.from(fileInput.files));
+    fileInput.value = '';
+  });
+
+  // ── File management ────────────────────────────────────────────────────────
+  function addFiles(newFiles) {
+    const existing = new Set(selectedFiles.map(f => f.name));
+    newFiles.forEach(f => { if (!existing.has(f.name)) selectedFiles.push(f); });
+    renderQueue();
+  }
+
+  function renderQueue() {
+    fileList.innerHTML = '';
+    selectedFiles.forEach((f, i) => {
+      const li = document.createElement('li');
+      li.className = 'file-item fade-up';
+      li.dataset.index = i;
+      li.innerHTML = `
+        <div>
+          <div class="file-name">${escHtml(f.name)}</div>
+          <div class="file-patient" id="patient-${i}">—</div>
+        </div>
+        <span class="file-badge badge-pending" id="badge-${i}">Pending</span>
+      `;
+      fileList.appendChild(li);
+    });
+
+    queueCount.textContent = selectedFiles.length;
+    fileQueue.classList.toggle('visible', selectedFiles.length > 0);
+    btnProcess.disabled = selectedFiles.length === 0 || isProcessing;
+  }
+
+  btnClear.addEventListener('click', () => {
+    if (isProcessing) return;
+    selectedFiles = [];
+    currentJobId  = null;
+    clearInterval(pollInterval);
+    renderQueue();
+    hideBanner();
+    hideStats();
+    btnDownload.style.display = 'none';
+    progressWrap.style.display = 'none';
+  });
+
+  // ── Process ────────────────────────────────────────────────────────────────
+  btnProcess.addEventListener('click', startProcessing);
+
+  async function startProcessing() {
+    if (!selectedFiles.length || isProcessing) return;
+    isProcessing = true;
+    btnProcess.disabled = true;
+    btnLabel.textContent = 'Uploading…';
+    btnDownload.style.display = 'none';
+    progressWrap.style.display = 'block';
+    progressBar.style.width = '0%';
+    showBanner('info', 'Uploading files to server…');
+
+    try {
+      const form = new FormData();
+      selectedFiles.forEach(f => form.append('files', f));
+
+      const res = await fetch('/upload', { 
+        method: 'POST', 
+        body: form,
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) {
+        if (res.status === 401) {
+          showBanner('error', 'Session expired. Please login again.');
+          showLogin();
+          return;
+        }
+        const err = await res.json().catch(() => ({ detail: 'Upload failed' }));
+        throw new Error(err.detail || 'Upload failed');
+      }
+      const data = await res.json();
+      currentJobId = data.job_id;
+      btnLabel.textContent = 'Processing…';
+      showBanner('info', `Job started — ID: ${currentJobId}`);
+      startPolling();
+    } catch (err) {
+      isProcessing = false;
+      btnProcess.disabled = false;
+      btnLabel.textContent = 'Process Reports';
+      showBanner('error', `Upload error: ${err.message}`);
+    }
+  }
+
+  // ── Polling ────────────────────────────────────────────────────────────────
+  function startPolling() {
+    clearInterval(pollInterval);
+    pollInterval = setInterval(pollStatus, 1800);
+    pollStatus(); // immediate first call
+  }
+
+  async function pollStatus() {
+    if (!currentJobId) return;
+    try {
+      const res = await fetch(`/status/${currentJobId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.status === 401) {
+        showBanner('error', 'Session expired. Please login again.');
+        showLogin();
+        clearInterval(pollInterval);
+        return;
+      }
+      if (!res.ok) return;
+      const data = await res.json();
+      updateUI(data);
+      if (data.status === 'complete') {
+        clearInterval(pollInterval);
+        onComplete(data);
+      }
+    } catch (_) { /* network hiccup — keep polling */ }
+  }
+
+  function updateUI(data) {
+    const total   = data.total || 0;
+    const done    = data.completed || 0;
+    const failed  = data.failed || 0;
+    const inProg  = data.in_progress || 0;
+    const pct     = total > 0 ? Math.round(((done + failed) / total) * 100) : 0;
+
+    progressBar.style.width = pct + '%';
+    showStats(total, done, failed, inProg);
+
+    // Update per-file badges
+    (data.files || []).forEach((f, i) => {
+      const badge   = document.getElementById(`badge-${i}`);
+      const patient = document.getElementById(`patient-${i}`);
+      const item    = document.querySelector(`.file-item[data-index="${i}"]`);
+      if (!badge) return;
+
+      badge.className = `file-badge badge-${f.status}`;
+      badge.textContent = f.status === 'processing'
+        ? '⟳ Processing'
+        : f.status.charAt(0).toUpperCase() + f.status.slice(1);
+
+      if (item) {
+        item.className = `file-item ${f.status}`;
+        if (f.status === 'processing') {
+          item.style.borderLeftColor = 'var(--warn)';
+        }
+      }
+
+      if (f.patient_name && patient) {
+        patient.textContent = f.patient_name;
+      }
+    });
+
+    if (data.status === 'processing') {
+      showBanner('info', `Processing ${inProg} file(s) — ${done + failed}/${total} complete`);
+    }
+  }
+
+  function onComplete(data) {
+    isProcessing = false;
+    btnProcess.disabled = false;
+    btnLabel.textContent = 'Process Reports';
+    progressBar.style.width = '100%';
+
+    const failed = data.failed || 0;
+    const done   = data.completed || 0;
+    if (failed > 0) {
+      showBanner('error', `Complete — ${done} extracted, ${failed} failed. Download Excel for details.`);
+    } else {
+      showBanner('success', `All ${done} report(s) extracted successfully.`);
+    }
+
+    btnDownload.style.display = 'inline-flex';
+  }
+
+  // ── Download ───────────────────────────────────────────────────────────────
+  btnDownload.addEventListener('click', async () => {
+    if (!currentJobId) return;
+    try {
+      const res = await fetch(`/download/${currentJobId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.status === 401) {
+        showBanner('error', 'Session expired. Please login again.');
+        showLogin();
+        return;
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Download failed' }));
+        showBanner('error', err.detail || 'Download failed');
+        return;
+      }
+      const blob = await res.blob();
+      const cd   = res.headers.get('Content-Disposition') || '';
+      const match = cd.match(/filename="?([^";\n]+)"?/);
+      const fname = match ? match[1] : 'medical_reports.xlsx';
+      const url   = URL.createObjectURL(blob);
+      const a     = document.createElement('a');
+      a.href = url; a.download = fname; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (err) {
+      showBanner('error', `Download error: ${err.message}`);
+    }
+  });
+
+  // ── UI helpers ─────────────────────────────────────────────────────────────
+  function showBanner(type, msg) {
+    statusBanner.className = `${type} visible`;
+    const icon = type === 'info'    ? '<div class="pulse-dot"></div>'
+               : type === 'success' ? '✓'
+               : '✗';
+    statusBanner.innerHTML = `${icon}<span>${escHtml(msg)}</span>`;
+  }
+  function hideBanner() {
+    statusBanner.className = '';
+    statusBanner.innerHTML = '';
+  }
+
+  function showStats(total, done, failed, inProg) {
+    statsRow.classList.add('visible');
+    statTotal.textContent  = total;
+    statDone.textContent   = done;
+    statFailed.textContent = failed;
+    statProg.textContent   = inProg;
+  }
+  function hideStats() {
+    statsRow.classList.remove('visible');
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Login / Logout ─────────────────────────────────────────────────────────
+  const loginForm    = document.getElementById('login-form');
+  const loginError   = document.getElementById('login-error');
+  const usernameInput = document.getElementById('username');
+  const passwordInput = document.getElementById('password');
+  const loginBtnLabel = document.getElementById('login-btn-label');
+  const logoutBtn    = document.getElementById('logout-btn');
+
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    loginError.classList.remove('show');
+    loginBtnLabel.textContent = 'Logging in...';
+    
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value;
+
+    try {
+      const res = await fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Login failed' }));
+        throw new Error(err.detail || 'Invalid credentials');
+      }
+
+      const data = await res.json();
+      setSessionToken(data.token);
+      showApp();
+      passwordInput.value = '';
+      loginBtnLabel.textContent = 'Login';
+    } catch (err) {
+      loginError.textContent = err.message;
+      loginError.classList.add('show');
+      loginBtnLabel.textContent = 'Login';
+    }
+  });
+
+  logoutBtn.addEventListener('click', async () => {
+    const token = getSessionToken();
+    if (token) {
+      await fetch('/logout', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).catch(() => {});
+    }
+    
+    clearSessionToken();
+    showLogin();
+    
+    // Reset UI
+    selectedFiles = [];
+    currentJobId  = null;
+    isProcessing  = false;
+    clearInterval(pollInterval);
+    renderQueue();
+    hideBanner();
+    hideStats();
+    btnDownload.style.display = 'none';
+    progressWrap.style.display = 'none';
+    btnProcess.disabled = true;
+  });
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  // Check if user is already logged in
+  if (isLoggedIn()) {
+    showApp();
+  } else {
+    showLogin();
+  }
+</script>
+</body>
+</html>

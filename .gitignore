@@ -1,0 +1,101 @@
+# ── Sensitive Files ────────────────────────────────────────────────────────────
+# NEVER commit actual environment files with secrets
+.env
+.env.local
+.env.docker
+*.key
+*.pem
+
+# ── Python ─────────────────────────────────────────────────────────────────────
+# Virtual environment
+venv/
+env/
+ENV/
+.venv
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ── Runtime Data ───────────────────────────────────────────────────────────────
+# User uploaded files
+uploads/*
+!uploads/.gitkeep
+
+# Generated output files
+output/*
+!output/.gitkeep
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Logs
+*.log
+logs/
+
+# ── IDE / Editor ───────────────────────────────────────────────────────────────
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# ── OS ─────────────────────────────────────────────────────────────────────────
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# ── Docker ─────────────────────────────────────────────────────────────────────
+# Don't ignore Dockerfile or docker-compose.yml (they should be committed)
+# Ignore any local docker volumes or caches
+.docker/
+
+# ── Testing / Coverage ─────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# ── Temporary Files ────────────────────────────────────────────────────────────
+*.tmp
+*.temp
+*.swp
+*.swo
+*~

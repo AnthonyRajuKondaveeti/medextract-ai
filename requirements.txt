@@ -1,0 +1,34 @@
+# ── Web framework ──────────────────────────────────────────────────────────────
+fastapi==0.111.0
+uvicorn==0.29.0
+python-multipart==0.0.9
+
+# ── PDF processing ─────────────────────────────────────────────────────────────
+pdfplumber==0.11.0
+pdf2image==1.17.0
+Pillow==10.3.0
+
+# ── AI / OpenAI ────────────────────────────────────────────────────────────────
+openai>=1.0.0
+boto3==1.34.0
+
+# ── Local OCR (Tesseract only - lighter & faster) ────────────────────────────
+pytesseract==0.3.13
+# Tesseract binary must also be installed at the OS level:
+#   macOS:  brew install tesseract
+#   Ubuntu: apt-get install tesseract-ocr
+
+# ── Database ───────────────────────────────────────────────────────────────────
+# psycopg2-binary includes the Postgres client libs — no system libpq needed.
+# For production builds from source (smaller image): use psycopg2==2.9.9 instead
+# and install libpq-dev at the OS level.
+psycopg2-binary==2.9.9
+
+# ── Excel output ───────────────────────────────────────────────────────────────
+openpyxl==3.1.2
+pandas==2.2.0
+
+# ── Utilities ──────────────────────────────────────────────────────────────────
+python-dotenv==1.0.0
+aiofiles==23.2.1
+requests==2.31.0
