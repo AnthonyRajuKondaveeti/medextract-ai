@@ -215,13 +215,13 @@ PDF bytes
 
 ```
 Scanned page → Tesseract OCR
-                 → confidence ≥ 0.8  → regex
+                 → confidence ≥ 0.7  → regex
                                          → ≥ 3 fields: OCR_HANDLED (free)
                                          → < 3 fields: OpenAI
-                 → confidence < 0.8  → OpenAI directly (no regex)
+                 → confidence < 0.7  → OpenAI directly (no regex)
 ```
 
-The 0.8 confidence threshold ensures accuracy. Low-confidence OCR text fed into regex produces silently wrong extractions — a worse outcome than an LLM miss. If Tesseract returns below-threshold confidence, the page goes straight to OpenAI with no regex attempt.
+The 0.7 confidence threshold ensures accuracy. Low-confidence OCR text fed into regex produces silently wrong extractions — a worse outcome than an LLM miss. If Tesseract returns below-threshold confidence, the page goes straight to OpenAI with no regex attempt.
 
 ### Merge conflict rules
 
@@ -234,7 +234,9 @@ The 0.8 confidence threshold ensures accuracy. Low-confidence OCR text fed into 
 
 ### Concurrency
 
-Up to 5 PDFs processed concurrently (configurable via `MAX_CONCURRENT_EXTRACTIONS` in `config.py`). One PDF failing never stops others. Each PDF's per-page loop runs synchronously within its thread to preserve page order.
+Up to 10 PDFs processed concurrently (configurable via `MAX_WORKERS` env variable, default in `config.py`). One PDF failing never stops others. Each PDF processes pages asynchronously with intelligent rate limiting to prevent API throttling.
+
+OpenAI API calls are limited to 3 concurrent requests (configurable via `AI_CONCURRENCY`) with exponential backoff and 300-500ms pre-call delays to stay within rate limits.
 
 ### Persistence
 
@@ -356,7 +358,8 @@ All tuneable constants live in `config.py` and can be overridden via `.env`:
 | `TEXT_MODE_MIN_CHARS` | `100` | Min chars for text mode (below = OCR) |
 | `GRAPH_PAGE_MAX_CHARS` | `200` | Max chars for graph page detection |
 | `OCR_DPI` | `200` | DPI for page rasterisation |
-| `OCR_CONFIDENCE_THRESHOLD` | `0.8` | Min OCR confidence to attempt regex. Below this → OpenAI directly |
+| `OCR_CONFIDENCE_THRESHOLD` | `0.7` | Min OCR confidence to attempt regex. Below this → OpenAI directly |
+| `AI_CONCURRENCY` | `3` | Max concurrent OpenAI API calls. Prevents rate limit throttling (env: `AI_CONCURRENCY`) |
 | `OCR_ENGINE_PRIMARY` | `tesseract` | OCR engine (Tesseract only - PaddleOCR removed) |
 | `OCR_ENGINE_FALLBACK` | `tesseract` | Fallback OCR engine (same as primary) |
 | `AI_MAX_RETRIES` | `1` | Retry attempts on invalid AI JSON response |
@@ -384,8 +387,9 @@ All tuneable constants live in `config.py` and can be overridden via `.env`:
 **Example high-performance `.env`:**
 ```bash
 MAX_WORKERS=12
+AI_CONCURRENCY=5  # More concurrent for Tier 2
 OPENAI_RATE_LIMIT_RPM=4500  # Tier 2
-OCR_CONFIDENCE_THRESHOLD=0.75  # Reduce unnecessary AI calls
+OCR_CONFIDENCE_THRESHOLD=0.7  # Current optimized threshold
 ```
 
 ---
@@ -424,9 +428,9 @@ Fields with `LOW` confidence on critical fields are written to Sheet 4 for human
 
 - Python 3.11+
 - Poppler (system dependency for `pdf2image`)
-- Tesseract (system dependency for OCR fallback)
+- Tesseract (system dependency for OCR)
 - PostgreSQL 14+ (any provider — local Docker, Railway, Render, Supabase, RDS)
-- Anthropic API key (dev) or AWS credentials with Bedrock access (production)
+- OpenAI API key (GPT-4o for vision-based extraction)
 
 ---
 
