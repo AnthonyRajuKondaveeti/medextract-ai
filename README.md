@@ -178,13 +178,13 @@ PDF bytes
               │
               ▼ (after all pages)
         Safety-net pass (ai_extractor.extract_safety_net)
-              └─ One final text-only Claude call for fields still null after
+              └─ One final text-only OpenAI call for fields still null after
                  the per-page loop. Only fires when the PDF has ≥ 100 chars of
                  real extractable text. Skipped entirely for fully-scanned PDFs.
               │
               ▼
         validator.calculate_confidence
-              └─ Scores regex vs Claude agreement per field:
+              └─ Scores regex vs OpenAI agreement per field:
                  HIGH (both agree) / MEDIUM (one source) / LOW (conflict)
                  LOW on critical fields → flagged for Sheet 4 review
               │
@@ -202,14 +202,14 @@ PDF bytes
 
 ### Page routing decision
 
-| Condition | Handler | Claude called? | Cost |
+| Condition | Handler | OpenAI called? | Cost |
 |-----------|---------|----------------|------|
 | Graph keyword + text < 200 chars | GRAPH_PAGE | No | Free |
 | Text page, regex finds ≥ 3 fields | REGEX_HANDLED | No | Free |
 | Scanned page, OCR conf ≥ threshold, regex ≥ 3 fields | OCR_HANDLED | No | Free |
-| Scanned page, OCR conf < threshold | CLAUDE_HANDLED | Yes — page PNG + null fields only | Minimal |
-| Scanned page, OCR conf OK but regex < 3 fields | CLAUDE_HANDLED | Yes — page PNG + null fields only | Minimal |
-| Text page, regex finds < 3 fields | CLAUDE_HANDLED | Yes — page PNG + null fields only | Minimal |
+| Scanned page, OCR conf < threshold | OpenAI_HANDLED | Yes — page PNG + null fields only | Minimal |
+| Scanned page, OCR conf OK but regex < 3 fields | OpenAI_HANDLED | Yes — page PNG + null fields only | Minimal |
+| Text page, regex finds < 3 fields | OpenAI_HANDLED | Yes — page PNG + null fields only | Minimal |
 
 ### Local OCR strategy
 
@@ -228,8 +228,8 @@ The 0.7 confidence threshold ensures accuracy. Low-confidence OCR text fed into 
 | Field type | Winner |
 |------------|--------|
 | Numeric lab values | Regex wins (deterministic, no hallucination) |
-| Narrative text (XRAY, PFT, AUDIOMETRY, Suggestion, Remark) | Claude wins |
-| Identity fields (Name, Age, Gender, dates) | Claude wins |
+| Narrative text (XRAY, PFT, AUDIOMETRY, Suggestion, Remark) | OpenAI wins |
+| Identity fields (Name, Age, Gender, dates) | OpenAI wins |
 | Both sources found different values | LOW confidence → Sheet 4 review |
 
 ### Concurrency
@@ -286,7 +286,7 @@ One row per patient. 105 columns covering all extracted fields, flags, and confi
 - 🟢 Green `#C6EFCE` — value present, within normal range, HIGH confidence
 - 🟡 Yellow `#FFEB9C` — value present with HIGH or LOW flag, HIGH confidence
 - 🟠 Orange `#F4B942` — value present, MEDIUM confidence (only one source found it)
-- 🔴 Red `#FFC7CE` — LOW confidence (regex vs Claude conflict), or extraction error
+- 🔴 Red `#FFC7CE` — LOW confidence (regex vs OpenAI conflict), or extraction error
 - ⬜ Grey `#D3D3D3` — field not found in report (null)
 
 **Sheet 2 — Abnormals Only**
@@ -295,20 +295,20 @@ Columns: `PatientName | Test | Value | Flag | Lab_Name | Report_Date`
 
 **Sheet 3 — Processing Summary**
 One row per PDF. Columns:
-`Filename | PatientName | Status | Fields_Extracted | Fields_Null | Processing_Time_Seconds | Error_Notes | Pages_Regex_Handled | Pages_OCR_Handled | Pages_Claude_Handled | Pages_Graph_Detected | Targeted_Rescan_Used | Rescan_Pages_Sent | Conflicts_Found | Unrecovered_Fields`
+`Filename | PatientName | Status | Fields_Extracted | Fields_Null | Processing_Time_Seconds | Error_Notes | Pages_Regex_Handled | Pages_OCR_Handled | Pages_OpenAI_Handled | Pages_Graph_Detected | Targeted_Rescan_Used | Rescan_Pages_Sent | Conflicts_Found | Unrecovered_Fields`
 
 - `Pages_Regex_Handled` — pages processed for free by regex on pdfplumber text
-- `Pages_OCR_Handled` — scanned pages where local OCR + regex succeeded (no Claude)
-- `Pages_Claude_Handled` — pages that required a Claude vision call
+- `Pages_OCR_Handled` — scanned pages where local OCR + regex succeeded (no OpenAI)
+- `Pages_OpenAI_Handled` — pages that required a OpenAI vision call
 - `Pages_Graph_Detected` — graph pages skipped by both layers
 - `Targeted_Rescan_Used` — whether targeted per-page rescan was triggered (orange if Yes)
 - `Rescan_Pages_Sent` — number of pages re-sent during targeted rescan
-- `Conflicts_Found` — number of critical fields with regex vs Claude disagreement
+- `Conflicts_Found` — number of critical fields with regex vs OpenAI disagreement
 - `Unrecovered_Fields` — fields still null after all passes (red cell); operators should review the original PDF for these
 
 **Sheet 4 — Review Required** *(only present when conflicts exist)*
 One row per critical-field conflict. Columns:
-`PatientName | Field | Regex_Value | Claude_Value | Conflict | Lab_Name | Report_Date`
+`PatientName | Field | Regex_Value | OpenAI_Value | Conflict | Lab_Name | Report_Date`
 
 Only written when at least one critical field has LOW confidence. Critical fields: `Haemoglobin`, `Blood_Group`, `SGOT_AST`, `SGPT_ALT`, `Serum_Creatinine`.
 
@@ -340,8 +340,8 @@ Every PDF produces a row in the Excel output — no silent failures.
 | Not a medical report | `NOT_MEDICAL_REPORT` |
 | Partial OCR failure | `PARTIAL_OCR` |
 | Patient name not found | `NAME_NOT_FOUND` |
-| Claude API timeout / error | `API_ERROR` |
-| Invalid JSON from Claude (after retry) | `API_ERROR` |
+| OpenAI API timeout / error | `API_ERROR` |
+| Invalid JSON from OpenAI (after retry) | `API_ERROR` |
 
 ---
 
@@ -410,14 +410,14 @@ For production, place the service behind a TLS-terminating reverse proxy (nginx,
 
 ## Confidence Scoring
 
-After all pages are processed, `validator.calculate_confidence()` compares what regex found versus what Claude found for each field:
+After all pages are processed, `validator.calculate_confidence()` compares what regex found versus what OpenAI found for each field:
 
 | Scenario | Confidence | Value used |
 |----------|-----------|------------|
 | Both sources agree (within 0.1 for numerics) | `HIGH` | Regex value |
 | Only regex found the field | `MEDIUM` | Regex value |
-| Only Claude found the field | `MEDIUM` | Claude value |
-| Both found different values | `LOW` | Stored as `CONFLICT: regex=X claude=Y` |
+| Only OpenAI found the field | `MEDIUM` | OpenAI value |
+| Both found different values | `LOW` | Stored as `CONFLICT: regex=X OpenAI=Y` |
 | Neither found the field | `null` | `null` |
 
 Fields with `LOW` confidence on critical fields are written to Sheet 4 for human review.
