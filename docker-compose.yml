@@ -12,7 +12,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U med -d medextract"]
+      test: [ "CMD-SHELL", "pg_isready -U med -d medextract" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,16 +27,15 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    # env_file passes values to the container WITHOUT variable interpolation.
+    # This is critical for ADMIN_PASSWORD_HASH — bcrypt hashes contain $ signs
+    # that Docker Compose would otherwise treat as variable references.
+    env_file:
+      - .env
     environment:
-      ENV: dev
-      API_KEY: ${API_KEY}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Override only the vars that need Docker-internal values.
+      # DATABASE_URL must point to the 'db' service, not localhost.
       DATABASE_URL: postgresql://med:secret@db:5432/medextract
-      OCR_CONFIDENCE_THRESHOLD: 0.7
-      OCR_ENGINE_PRIMARY: tesseract
-      OCR_ENGINE_FALLBACK: tesseract
-      AI_CONCURRENCY: 3
-      MOCK_AI: false
     depends_on:
       db:
         condition: service_healthy

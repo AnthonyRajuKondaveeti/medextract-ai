@@ -1,0 +1,29 @@
+# ── Production Docker Compose Override (AWS) ───────────────────────────────────
+# Usage on EC2:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This overrides the local docker-compose.yml for AWS production.
+# All secrets come from /home/ec2-user/.env.prod via env_file.
+# The bundled Postgres (db) service is disabled — use AWS RDS instead.
+
+services:
+  app:
+    env_file:
+      # On EC2, all ENV vars come from here. Plain $ is fine — docker run reads literally.
+      - /home/ec2-user/.env.prod
+    environment:
+      # DATABASE_URL from .env.prod already points to RDS — no override needed here.
+      # Keeping this section for any other docker-internal overrides if required.
+      ENV: production
+    restart: always # restart even after EC2 reboot (unlike unless-stopped)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m" # rotate logs at 50 MB
+        max-file: "5" # keep last 5 rotated files
+
+  db:
+    # Disabled in production — use AWS RDS instead of bundled Postgres.
+    # Setting an impossible profile prevents this service from starting.
+    profiles:
+      - local-only

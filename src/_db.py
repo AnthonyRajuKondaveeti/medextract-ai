@@ -55,6 +55,7 @@ asyncio.to_thread workers (sync) and from the async FastAPI event loop
 
 import logging
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Optional
 
 import psycopg2
@@ -164,6 +165,17 @@ def init_db() -> None:
             cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_openai_calls_job_id
                 ON openai_calls(job_id)
+            """)
+            # ── Sessions table (PostgreSQL-backed auth sessions) ──────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS sessions (
+                    token      TEXT PRIMARY KEY,
+                    expires_at TIMESTAMPTZ NOT NULL
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sessions_expires
+                ON sessions(expires_at)
             """)
     logger.info("Database schema verified.")
 
@@ -330,3 +342,41 @@ def db_get_files(job_id: str) -> list[dict]:
                 (job_id,),
             )
             return [dict(r) for r in cur.fetchall()]
+
+
+# ── Session CRUD ───────────────────────────────────────────────────────────────
+
+def db_create_session(token: str, expires_at: datetime) -> None:
+    """Persist a new login session."""
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO sessions (token, expires_at) VALUES (%s, %s)",
+                (token, expires_at),
+            )
+
+
+def db_validate_session(token: str) -> bool:
+    """Return True if the token exists and has not expired."""
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM sessions WHERE token = %s AND expires_at > now()",
+                (token,),
+            )
+            return cur.fetchone() is not None
+
+
+def db_delete_session(token: str) -> None:
+    """Remove a session (logout)."""
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM sessions WHERE token = %s", (token,))
+
+
+def db_cleanup_sessions() -> int:
+    """Delete all expired sessions. Returns the number of rows removed."""
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM sessions WHERE expires_at <= now()")
+            return cur.rowcount
