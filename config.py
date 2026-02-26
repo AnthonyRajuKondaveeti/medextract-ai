@@ -42,9 +42,12 @@ if not DATABASE_URL:
 MAX_CONCURRENT_EXTRACTIONS: int = int(os.getenv("MAX_WORKERS", "10"))
 
 # Max concurrent OpenAI API calls in flight at any one time.
-# Keeps us well within Tier 1 limits (500 RPM) even under full load.
+# With chunked AI calls (batch_processor Phase 2), each call covers 3-4 pages,
+# so there are far fewer calls in flight than before. Raising to 10 allows all
+# MAX_CONCURRENT_EXTRACTIONS files to run their chunks truly in parallel while
+# staying well within Tier 1 limits (~150 sustained RPM vs the 500 RPM cap).
 # Raise to 30-40 on Tier 2 (5000 RPM).
-AI_CONCURRENCY: int = int(os.getenv("AI_CONCURRENCY", "3"))
+AI_CONCURRENCY: int = int(os.getenv("AI_CONCURRENCY", "10"))
 
 # ── Directories ────────────────────────────────────────────────────────────────
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")

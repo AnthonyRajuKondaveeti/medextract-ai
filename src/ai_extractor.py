@@ -179,9 +179,9 @@ Detect abnormal flags from ANY format and extract as SEPARATE fields:
 - If value is within reference range and no flag printed
   -> field_Flag: null"""
 
-_FOCUSED_PROMPT = """Extract only the following specific fields from this medical report page.
+_FOCUSED_PROMPT = """Extract only the following specific fields from {scope}.
 Return a JSON object containing ONLY these fields.
-Set a field to null if it is not present on this page.
+Set a field to null if it is not present anywhere in {scope}.
 Do not guess. Do not hallucinate values.
 No explanation. No markdown. Just the raw JSON object.
 
@@ -219,10 +219,6 @@ async def _call_openai_async(
     Returns (response_text, input_tokens, output_tokens).
     Raises httpx.HTTPStatusError or httpx.RequestError on failure.
     """
-    # Pre-call delay: 300-500ms to avoid rate limit spikes
-    delay = random.uniform(0.3, 0.5)
-    await asyncio.sleep(delay)
-    
     content: list = []
 
     if images:
@@ -333,17 +329,23 @@ async def _call_ai_with_retry(
 async def extract_with_ai(
     null_fields: list[str],
     page_image: Optional[str] = None,
+    page_images: Optional[list[str]] = None,
     page_text: Optional[str] = None,
     mode: str = "image",
 ) -> tuple[dict, str, int, int]:
     """
-    Async per-page AI extraction.
+    Async AI extraction — supports single-page and multi-page (chunked) calls.
 
     Args:
-        null_fields: Fields not yet filled by regex/OCR — only these are requested.
-        page_image:  Base64 PNG of the page (used when mode="image").
-        page_text:   Raw text of the page (used when mode="text").
-        mode:        "image" (vision call) or "text" (text-only call).
+        null_fields:  Fields not yet filled by regex/OCR — only these are requested.
+        page_image:   Base64 PNG of a single page (single-page image call).
+        page_images:  List of base64 PNGs for a multi-page image chunk.
+                      When provided, takes precedence over page_image.
+                      _call_openai_async already supports list[str] images natively.
+        page_text:    Raw text of the page(s) (used when mode="text").
+                      For chunked text calls, pass pre-combined text with
+                      ---PAGE BREAK--- delimiters.
+        mode:         "image" (vision call) or "text" (text-only call).
 
     Returns:
         (partial_dict, extraction_note, input_tokens, output_tokens)
@@ -358,18 +360,40 @@ async def extract_with_ai(
 
     null_fields_list = _build_null_fields_str(null_fields)
 
-    if mode == "image" and page_image:
-        content_block = "PAGE IMAGE: (attached above)"
-        user_prompt = _FOCUSED_PROMPT.format(
-            null_fields_list=null_fields_list,
-            content_block=content_block,
-        )
-        data, note, inp, out = await _call_ai_with_retry(user_prompt, images=[page_image])
-        return data, note, inp, out
+    if mode == "image":
+        # Resolve image list: page_images (chunk) takes precedence over page_image (single).
+        images: Optional[list[str]] = None
+        if page_images:
+            images = page_images
+        elif page_image:
+            images = [page_image]
 
-    # Text fallback — no image available
+        if images:
+            n = len(images)
+            if n == 1:
+                scope         = "this medical report page"
+                content_block = "PAGE IMAGE: (attached above)"
+            else:
+                scope         = f"these {n} medical report pages"
+                content_block = f"{n} PAGE IMAGES: (attached above, in page order)"
+            user_prompt = _FOCUSED_PROMPT.format(
+                scope=scope,
+                null_fields_list=null_fields_list,
+                content_block=content_block,
+            )
+            data, note, inp, out = await _call_ai_with_retry(user_prompt, images=images)
+            return data, note, inp, out
+
+    # Text mode — page_text contains either a single page or pre-combined
+    # multi-page text with ---PAGE BREAK--- delimiters (from batch_processor).
+    page_break_count = (page_text or "").count("---PAGE BREAK---")
+    if page_break_count == 0:
+        scope = "this medical report page"
+    else:
+        scope = f"these {page_break_count + 1} medical report pages"
     content_block = f"PAGE TEXT:\n{page_text or ''}"
     user_prompt = _FOCUSED_PROMPT.format(
+        scope=scope,
         null_fields_list=null_fields_list,
         content_block=content_block,
     )

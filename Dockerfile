@@ -1,33 +1,25 @@
-# ── Stable Production Build ────────────────────────────────────────────────
+# ── Optimized Production Build ─────────────────────────────────────────────
 
-FROM python:3.10
+FROM python:3.10-slim
 
 # Prevent Python buffering & .pyc files
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    poppler-utils \
-    tesseract-ocr \
-    libpq-dev \
-    gcc \
-    g++ \
-    libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender1 \
-    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Copy requirements first (better caching)
 COPY requirements.txt .
 
-# Upgrade pip tools first
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt
+# Install system deps + Python packages in one layer, then clean up build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    poppler-utils \
+    tesseract-ocr \
+    gcc \
+    && pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apt-get purge -y --auto-remove gcc \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy app code
 COPY . .
