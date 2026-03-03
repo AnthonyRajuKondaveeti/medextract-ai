@@ -264,6 +264,10 @@ async def _call_ai_with_retry(
     Returns (data_dict, error_note, input_tokens, output_tokens).
     error_note is "" on success, "API_ERROR" on terminal failure.
     Tokens are accumulated across retry attempts.
+    
+    Rate limit handling (429 errors):
+    - Uses longer exponential backoff for 429 errors (5s, 10s, 20s, 40s)
+    - Regular errors use shorter backoff (1s, 2s, 4s, 8s)
     """
     total_input  = 0
     total_output = 0
@@ -297,14 +301,24 @@ async def _call_ai_with_retry(
             return {}, "API_ERROR", total_input, total_output
 
         except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code
             logger.error(
-                f"OpenAI HTTP error {exc.response.status_code} "
+                f"OpenAI HTTP error {status_code} "
                 f"(attempt {attempt + 1}/{AI_MAX_RETRIES + 1}): {exc}"
             )
             if attempt < AI_MAX_RETRIES:
-                # Exponential backoff: 1s, 2s, 4s, 8s, 16s + jitter
-                backoff = (2 ** attempt) + random.uniform(0, 1)
-                logger.info(f"Retrying in {backoff:.1f}s...")
+                # Rate limit (429) gets longer backoff than other errors
+                if status_code == 429:
+                    # Aggressive backoff for rate limits: 5s, 10s, 20s, 40s + jitter
+                    backoff = (5 * (2 ** attempt)) + random.uniform(0, 2)
+                    logger.warning(
+                        f"Rate limit hit (429). Retrying in {backoff:.1f}s... "
+                        f"Consider reducing AI_CONCURRENCY in config."
+                    )
+                else:
+                    # Standard exponential backoff: 1s, 2s, 4s, 8s + jitter
+                    backoff = (2 ** attempt) + random.uniform(0, 1)
+                    logger.info(f"Retrying in {backoff:.1f}s...")
                 await asyncio.sleep(backoff)
                 continue
             return {}, "API_ERROR", total_input, total_output
@@ -314,7 +328,7 @@ async def _call_ai_with_retry(
                 f"AI call failed (attempt {attempt + 1}/{AI_MAX_RETRIES + 1}): {exc}"
             )
             if attempt < AI_MAX_RETRIES:
-                # Exponential backoff: 1s, 2s, 4s, 8s, 16s + jitter
+                # Standard exponential backoff: 1s, 2s, 4s, 8s + jitter
                 backoff = (2 ** attempt) + random.uniform(0, 1)
                 logger.info(f"Retrying in {backoff:.1f}s...")
                 await asyncio.sleep(backoff)

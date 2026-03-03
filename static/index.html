@@ -522,6 +522,9 @@
       <button class="btn btn-download" id="btn-download" style="display:none">
         ↓ Download Excel
       </button>
+      <button class="btn btn-download" id="btn-download-all" style="display:inline-flex; margin-left: 8px;">
+        ↓ Download All Batches
+      </button>
     </div>
   </div>
 
@@ -610,6 +613,7 @@
   const btnLabel    = document.getElementById('btn-label');
   const btnClear    = document.getElementById('btn-clear');
   const btnDownload = document.getElementById('btn-download');
+  const btnDownloadAll = document.getElementById('btn-download-all');
   const progressBar = document.getElementById('progress-bar');
   const progressWrap= document.getElementById('progress-wrap');
   const statusBanner= document.getElementById('status-banner');
@@ -797,9 +801,9 @@
     const failed = data.failed || 0;
     const done   = data.completed || 0;
     if (failed > 0) {
-      showBanner('error', `Complete — ${done} extracted, ${failed} failed. Download Excel for details.`);
+      showBanner('error', `Complete — ${done} extracted, ${failed} failed. Click Download Excel button.`);
     } else {
-      showBanner('success', `All ${done} report(s) extracted successfully.`);
+      showBanner('success', `All ${done} report(s) extracted successfully. Click Download Excel button.`);
     }
 
     btnDownload.style.display = 'inline-flex';

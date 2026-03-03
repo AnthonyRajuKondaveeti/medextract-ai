@@ -380,3 +380,28 @@ def db_cleanup_sessions() -> int:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM sessions WHERE expires_at <= now()")
             return cur.rowcount
+
+
+def db_get_all_completed_jobs() -> list[dict]:
+    """
+    Return all completed jobs with their metadata.
+    Used for the "Download All Batches" feature.
+    Returns list of dicts with job_id, created_at, file_count.
+    """
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT 
+                    j.job_id,
+                    j.created_at,
+                    j.excel_filename,
+                    COUNT(jf.id) as file_count,
+                    SUM(CASE WHEN jf.status = 'done' THEN 1 ELSE 0 END) as files_done,
+                    SUM(CASE WHEN jf.status = 'failed' THEN 1 ELSE 0 END) as files_failed
+                FROM jobs j
+                LEFT JOIN job_files jf ON j.job_id = jf.job_id
+                WHERE j.status = 'complete'
+                GROUP BY j.job_id, j.created_at, j.excel_filename
+                ORDER BY j.created_at DESC
+            """)
+            return [dict(r) for r in cur.fetchall()]

@@ -236,6 +236,7 @@ def _coerce_numeric(value: Any, field_name: str) -> tuple[Any, Optional[str]]:
     Coerce value to float for numeric fields.
     Returns (coerced_value, flag_hint_or_None).
     If value contains an embedded flag ("12.6 L"), splits it out.
+    Extracts numeric values from text like "32 Years", "23.5 kg", etc.
     """
     if value is None:
         return None, None
@@ -245,6 +246,7 @@ def _coerce_numeric(value: Any, field_name: str) -> tuple[Any, Optional[str]]:
         stripped = value.strip()
         if not stripped:
             return None, None
+        # Check for embedded flag first ("12.6 L")
         num_val, flag_hint = _parse_embedded_flag(stripped)
         if num_val is not None:
             logger.warning(
@@ -252,9 +254,21 @@ def _coerce_numeric(value: Any, field_name: str) -> tuple[Any, Optional[str]]:
                 f"Extracted numeric={num_val}, flag={flag_hint}"
             )
             return num_val, flag_hint
+        # Try direct float conversion
         try:
             return float(stripped), None
         except ValueError:
+            # Extract leading numeric value from strings like "32 Years", "23.5 kg", etc.
+            numeric_match = re.match(r'^([\d.]+)\s*[a-zA-Z]*', stripped)
+            if numeric_match:
+                try:
+                    extracted_num = float(numeric_match.group(1))
+                    logger.info(
+                        f"Field '{field_name}' extracted numeric {extracted_num} from '{stripped}'"
+                    )
+                    return extracted_num, None
+                except ValueError:
+                    pass
             logger.warning(
                 f"Field '{field_name}' expected numeric but got '{stripped}'. Setting null."
             )

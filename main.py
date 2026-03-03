@@ -43,7 +43,14 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 import secrets
 
-from _db import db_create_session, db_validate_session, db_delete_session, db_cleanup_sessions
+from _db import (
+    db_create_session,
+    db_validate_session,
+    db_delete_session,
+    db_cleanup_sessions,
+    db_get_all_completed_jobs,
+    db_get_excel,
+)
 from batch_processor import (
     STATUS_COMPLETE,
     create_job,
@@ -398,6 +405,121 @@ async def download_excel(job_id: str):
             "Content-Length": str(len(job.excel_bytes)),
         },
     )
+
+
+@app.get("/download/all", dependencies=[_auth])
+async def download_all_batches():
+    """
+    Download a combined Excel report containing all patient records from all completed jobs.
+    Combines all batches into a single Excel file.
+    """
+    from openpyxl import load_workbook
+    from excel_writer import build_excel, get_output_filename
+    import io
+
+    # Get all completed jobs
+    completed_jobs = await asyncio.to_thread(db_get_all_completed_jobs)
+    
+    if not completed_jobs:
+        raise HTTPException(
+            status_code=404,
+            detail="No completed jobs found. Process some files first.",
+        )
+
+    # Collect all patient records from all jobs
+    all_records = []
+    jobs_processed = 0
+
+    for job_info in completed_jobs:
+        job_id = job_info["job_id"]
+        excel_bytes = await asyncio.to_thread(db_get_excel, job_id)
+        
+        if not excel_bytes:
+            logger.warning(f"Job {job_id} has no Excel data, skipping.")
+            continue
+
+        try:
+            # Parse the Excel file to extract patient records
+            wb = load_workbook(io.BytesIO(excel_bytes), read_only=True, data_only=True)
+            ws = wb["Results"]  # The results sheet
+
+            # Read header row
+            headers = [cell.value for cell in ws[1]]
+            
+            # Skip first column (S.No) and read data rows
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if not any(row):  # Skip empty rows
+                    continue
+                    
+                # Build record dict (skip S.No column)
+                record = {}
+                for idx, header in enumerate(headers[1:], start=1):
+                    value = row[idx] if idx < len(row) else None
+                    
+                    # Handle embedded flags like "12.6 (H)" or "12.6 (L)"
+                    if value and isinstance(value, str):
+                        # Remove flag annotations for storage
+                        value = value.replace(" (H)", "").replace(" (L)", "")
+                        # Handle "Not Attached" / "Attached" for graph fields
+                        if value in ["Not Attached", "Attached"]:
+                            value = None if value == "Not Attached" else "PRESENT"
+                    
+                    # Map display name back to internal field name
+                    # This is a reverse lookup of COLUMN_DISPLAY_NAMES
+                    from validator import COLUMN_DISPLAY_NAMES
+                    field_name = None
+                    for k, v in COLUMN_DISPLAY_NAMES.items():
+                        if v == header:
+                            field_name = k
+                            break
+                    
+                    if field_name:
+                        record[field_name] = value
+                    else:
+                        record[header] = value
+                
+                all_records.append(record)
+            
+            wb.close()
+            jobs_processed += 1
+            
+        except Exception as exc:
+            logger.error(f"Error parsing Excel for job {job_id}: {exc}")
+            continue
+
+    if not all_records:
+        raise HTTPException(
+            status_code=404,
+            detail="No patient records found in completed jobs.",
+        )
+
+    # Build combined Excel file
+    try:
+        combined_excel = await asyncio.to_thread(
+            build_excel, all_records, []  # Empty summaries for combined report
+        )
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"all_batches_combined_{timestamp}.xlsx"
+        
+        logger.info(
+            f"Combined Excel generated: {len(all_records)} records from {jobs_processed} job(s)."
+        )
+        
+        return Response(
+            content=combined_excel,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(combined_excel)),
+            },
+        )
+    except Exception as exc:
+        logger.error(f"Error building combined Excel: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to build combined Excel: {str(exc)}",
+        )
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

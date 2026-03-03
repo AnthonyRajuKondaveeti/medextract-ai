@@ -43,11 +43,11 @@ MAX_CONCURRENT_EXTRACTIONS: int = int(os.getenv("MAX_WORKERS", "10"))
 
 # Max concurrent OpenAI API calls in flight at any one time.
 # With chunked AI calls (batch_processor Phase 2), each call covers 3-4 pages,
-# so there are far fewer calls in flight than before. Raising to 10 allows all
-# MAX_CONCURRENT_EXTRACTIONS files to run their chunks truly in parallel while
-# staying well within Tier 1 limits (~150 sustained RPM vs the 500 RPM cap).
-# Raise to 30-40 on Tier 2 (5000 RPM).
-AI_CONCURRENCY: int = int(os.getenv("AI_CONCURRENCY", "10"))
+# so there are far fewer calls in flight than before.
+# Default: 5 (conservative for Tier 1, 500 RPM limit)
+# Raise to 10-15 on Tier 2 (5000 RPM), 30-40 on Tier 3+.
+# If you hit 429 rate limits, reduce this value or upgrade your OpenAI tier.
+AI_CONCURRENCY: int = int(os.getenv("AI_CONCURRENCY", "5"))
 
 # ── Directories ────────────────────────────────────────────────────────────────
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
@@ -85,8 +85,10 @@ OCR_ENGINE_PRIMARY: str = os.getenv("OCR_ENGINE_PRIMARY", "tesseract")
 OCR_ENGINE_FALLBACK: str = os.getenv("OCR_ENGINE_FALLBACK", "tesseract")
 
 # ── AI ─────────────────────────────────────────────────────────────────────────
-# Retry attempts on JSON parse failure or network error (0 = no retry).
-AI_MAX_RETRIES: int = 1
+# Retry attempts on JSON parse failure, network error, or rate limits (0 = no retry).
+# Default: 3 retries with exponential backoff (5s, 10s, 20s for 429 errors).
+# Higher values increase resilience but may slow down processing on persistent failures.
+AI_MAX_RETRIES: int = int(os.getenv("AI_MAX_RETRIES", "3"))
 
 # ── Mock mode ──────────────────────────────────────────────────────────────────
 # Set MOCK_AI=true in .env to skip all OpenAI API calls.
