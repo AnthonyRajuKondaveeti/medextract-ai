@@ -373,40 +373,6 @@ async def get_status(job_id: str):
     return JSONResponse(content=payload)
 
 
-@app.get("/download/{job_id}", dependencies=[_auth])
-async def download_excel(job_id: str):
-    """
-    Download the generated Excel report for a completed job.
-    Only available when job status is 'complete'.
-    """
-    job = get_job(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-
-    if job.status != STATUS_COMPLETE:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Job is not complete yet. Current status: '{job.status}'.",
-        )
-
-    if not job.excel_bytes:
-        raise HTTPException(
-            status_code=500,
-            detail="Excel file could not be generated for this job.",
-        )
-
-    filename = job.excel_filename or "medical_reports.xlsx"
-
-    return Response(
-        content=job.excel_bytes,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Content-Length": str(len(job.excel_bytes)),
-        },
-    )
-
-
 @app.get("/download/all", dependencies=[_auth])
 async def download_all_batches():
     """
@@ -520,6 +486,40 @@ async def download_all_batches():
             status_code=500,
             detail=f"Failed to build combined Excel: {str(exc)}",
         )
+
+
+@app.get("/download/{job_id}", dependencies=[_auth])
+async def download_excel(job_id: str):
+    """
+    Download the generated Excel report for a completed job.
+    Only available when job status is 'complete'.
+    """
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+
+    if job.status != STATUS_COMPLETE:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is not complete yet. Current status: '{job.status}'.",
+        )
+
+    if not job.excel_bytes:
+        raise HTTPException(
+            status_code=500,
+            detail="Excel file could not be generated for this job.",
+        )
+
+    filename = job.excel_filename or "medical_reports.xlsx"
+
+    return Response(
+        content=job.excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(job.excel_bytes)),
+        },
+    )
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

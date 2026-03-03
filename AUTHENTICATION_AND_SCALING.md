@@ -8,7 +8,7 @@
 ### Credentials
 ```
 Username: admin
-Password: Admin@321
+Password: Admin@123
 ```
 
 ### How It Works
