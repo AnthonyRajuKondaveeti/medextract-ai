@@ -50,6 +50,7 @@ from _db import (
     db_cleanup_sessions,
     db_get_all_completed_jobs,
     db_get_excel,
+    close_db,
 )
 from batch_processor import (
     STATUS_COMPLETE,
@@ -207,12 +208,36 @@ async def _cleanup_task() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # ── Production startup guards ──────────────────────────────────────────────
+    # These checks only run when ENV=production and will abort startup on
+    # misconfiguration rather than silently running in an insecure state.
+    _env = os.getenv("ENV", "dev")
+    if _env == "production":
+        if not _ADMIN_PASSWORD_HASH:
+            raise RuntimeError(
+                "FATAL: ADMIN_PASSWORD_HASH is not set but ENV=production. "
+                "Generate a bcrypt hash with:\n"
+                "  python -c \"import bcrypt; "
+                "print(bcrypt.hashpw(b'YourPassword', bcrypt.gensalt()).decode())\"\n"
+                "Then set ADMIN_PASSWORD_HASH=<hash> in your .env.prod file."
+            )
+        _raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
+        if _raw_origins.strip() == "*":
+            raise RuntimeError(
+                "FATAL: ALLOWED_ORIGINS=* is not allowed in production (ENV=production). "
+                "Set ALLOWED_ORIGINS to your actual domain(s) in .env.prod, e.g.:\n"
+                "  ALLOWED_ORIGINS=https://your-domain.com"
+            )
+        logger.info("Production startup checks passed.")
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     init_db()   # creates/verifies schema including sessions table (idempotent)
     asyncio.create_task(_cleanup_task())
     logger.info("Medical Extractor API started.")
     yield
+    # Graceful shutdown: close DB connection pool
+    close_db()
     logger.info("Medical Extractor API shutting down.")
 
 

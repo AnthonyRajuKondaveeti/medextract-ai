@@ -33,8 +33,9 @@ services:
     env_file:
       - .env
     environment:
-      # Override only the vars that need Docker-internal values.
-      # DATABASE_URL must point to the 'db' service, not localhost.
+      # Always point to the 'db' service inside Docker for local development.
+      # On EC2, docker-compose.prod.yml overrides this with the RDS URL
+      # via a shell-exported DATABASE_URL (see deployment guide Step 8).
       DATABASE_URL: postgresql://med:secret@db:5432/medextract
     depends_on:
       db:

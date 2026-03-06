@@ -98,6 +98,15 @@ def _conn():
 
 # ── Schema bootstrap ───────────────────────────────────────────────────────────
 
+def close_db() -> None:
+    """Close the connection pool cleanly on shutdown."""
+    global _pool
+    if _pool is not None:
+        _pool.closeall()
+        _pool = None
+        logger.info("Postgres connection pool closed.")
+
+
 def init_db() -> None:
     """
     Create connection pool and ensure schema exists.
@@ -105,11 +114,43 @@ def init_db() -> None:
     Safe to call on an already-initialised DB (uses CREATE TABLE IF NOT EXISTS).
     """
     global _pool
-    _pool = ThreadedConnectionPool(
-        minconn=2,
-        maxconn=MAX_CONCURRENT_EXTRACTIONS + 4,
-        dsn=DATABASE_URL,
-    )
+    
+    # AWS RDS requires SSL in production. If DATABASE_URL doesn't include sslmode,
+    # psycopg2 will default to 'prefer' which attempts SSL but falls back to plaintext.
+    # For production RDS, append ?sslmode=require to DATABASE_URL or set PGSSLMODE=require.
+    # Connection options for production resilience:
+    #   connect_timeout: Fail fast if DB is unreachable (default: no timeout)
+    #   keepalives_idle: Send TCP keepalive after N seconds of inactivity (prevents NAT timeout)
+    #   options: statement_timeout prevents runaway queries from blocking workers
+    connection_kwargs = {
+        "minconn": 2,
+        "maxconn": MAX_CONCURRENT_EXTRACTIONS + 4,
+        "dsn": DATABASE_URL,
+    }
+    
+    # Add production connection tuning if ENV=production
+    import os
+    if os.getenv("ENV") == "production":
+        # These options are appended to the DSN via psycopg2's connection string parsing
+        # If DATABASE_URL already contains these params, they'll be respected.
+        # Otherwise, these are safe production defaults for AWS RDS:
+        connection_kwargs["connect_timeout"] = 10  # Fail after 10s if DB unreachable
+        connection_kwargs["keepalives"] = 1
+        connection_kwargs["keepalives_idle"] = 30  # Start keepalives after 30s idle
+        connection_kwargs["keepalives_interval"] = 10
+        connection_kwargs["keepalives_count"] = 5
+        # statement_timeout via options parameter (works across psycopg2 versions)
+        connection_kwargs["options"] = "-c statement_timeout=300000"  # 5 min query timeout
+        
+        # Warn if sslmode is not explicitly set in production
+        if "sslmode" not in DATABASE_URL:
+            logger.warning(
+                "DATABASE_URL does not specify sslmode. "
+                "For AWS RDS, append ?sslmode=require to your DATABASE_URL. "
+                "Connections will attempt SSL but may fall back to plaintext."
+            )
+    
+    _pool = ThreadedConnectionPool(**connection_kwargs)
     logger.info("Postgres connection pool created.")
 
     with _conn() as conn:

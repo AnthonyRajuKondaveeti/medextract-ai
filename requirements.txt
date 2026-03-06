@@ -8,9 +8,9 @@ pdfplumber==0.11.0
 pdf2image==1.17.0
 Pillow==10.3.0
 
-# ── AI / OpenAI ────────────────────────────────────────────────────────────────
-openai>=1.0.0
-boto3==1.34.0
+# ── AI / OpenAI (direct httpx calls — openai SDK not used) ─────────────────────
+# httpx is used directly in ai_extractor.py for async OpenAI API calls.
+httpx==0.27.0
 
 # ── Local OCR (Tesseract only - lighter & faster) ────────────────────────────
 pytesseract==0.3.13
@@ -26,12 +26,9 @@ psycopg2-binary==2.9.9
 
 # ── Excel output ───────────────────────────────────────────────────────────────
 openpyxl==3.1.2
-pandas==2.2.0
 
 # ── Utilities ──────────────────────────────────────────────────────────────────
 python-dotenv==1.0.0
-aiofiles==23.2.1
-requests==2.31.0
 
 # ── Production ─────────────────────────────────────────────────────────────────
 bcrypt==4.2.1
